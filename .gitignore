@@ -1,0 +1,32 @@
+*.class
+
+# Package Files #
+*.jar
+*.war
+*.ear
+
+# Maven
+target
+
+# Intellij
+.idea
+*.iml
+
+**/.envrc
+
+### Eclipse ###
+*.pydevproject
+.metadata
+.gradle
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+**/*.classpath
+**/*.project
+

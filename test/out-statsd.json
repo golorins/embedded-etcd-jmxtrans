@@ -1,0 +1,1 @@
+{"outputWriters": [    {      "@class": "org.jmxtrans.embedded.output.StatsDWriter",      "settings": {        "host": "127.0.0.1",        "port": "8125",		"namePrefix": ""      }    }  ]}
