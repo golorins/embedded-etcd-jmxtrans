@@ -28,147 +28,150 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jmxtrans.embedded.EmbeddedJmxTransException;
 import org.jmxtrans.embedded.config.KVStore;
 import org.jmxtrans.embedded.config.KeyValue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * JMXTrans configuration from a remote key value store. The configuration is stored in a key that
- * holds the references to the various elements that make up the final jmxtrans configuration
+ * JMXTrans configuration from a remote key value store. The configuration is stored in a key that holds the references
+ * to the various elements that make up the final jmxtrans configuration
  * 
  * @author Simone Zorzetti
  */
 public class KVStoreComposedConfiguration {
 
-  private static final Map<String, String> keyModifiedIndexes = new ConcurrentHashMap<String, String>();
-  private static volatile String lastConfigKeyPath = null;
-  private final KVStore keyValueStore;
+    private static final Map<String, String> keyModifiedIndexes = new ConcurrentHashMap<String, String>();
+    private static volatile String           lastConfigKeyPath  = null;
+    private final KVStore                    keyValueStore;
+    private final Logger                     logger             = LoggerFactory
+            .getLogger(KVStoreComposedConfiguration.class);
 
-  /**
-   * Constructor
-   * 
-   * @param store KVStore: implementation of the KVStore interface to use
-   */
-  public KVStoreComposedConfiguration(KVStore store) {
+    /**
+     * Constructor
+     * 
+     * @param store KVStore: implementation of the KVStore interface to use
+     */
+    public KVStoreComposedConfiguration(KVStore store) {
 
-    keyValueStore = store;
-  }
-
-  /**
-   * This method scans the KV store tree along the path of the key provided (bottom to top)
-   * searching for the configuration key passed.<br>
-   * Ex:<br>
-   * etcd://127.0.0.1:123/root/level1/level2/config<br>
-   * etcd://127.0.0.1:123/root/level1/config<br>
-   * etcd://127.0.0.1:123/root/config<br>
-   * etcd://127.0.0.1:123/config<br>
-   * <p>
-   * The configuration key is treated as a coma separated list of absolute paths in the kv store
-   * which represent the elements that should be merged to obtain the final jmxtrans configuration.
-   * <p>
-   * Ex:<br>
-   * /elements/jdk7, /elements/tomcat7, /elements/output<br>
-   * <p>
-   * Returns a coma separeted list of etcd URLs representing the keys that make up the jmxtrans
-   * desired configuration<br>
-   * If the all the keys didn't change since the last invocation returns null<br>
-   * Ex:<br>
-   * etcd://127.0.0.1:123/elements/jdk7, etcd://127.0.0.1:123/elements/tomcat7,
-   * etcd://127.0.0.1:123/elements/output <br>
-   * 
-   * @param configKeyUri the uri of the configuration key
-   * @return
-   * @throws EmbeddedJmxTransException
-   */
-  @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(value = "ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD")
-  public List<String> getConfigElementsKeys(String configKeyUri) throws EmbeddedJmxTransException {
-
-    String etcdURI = configKeyUri.substring(0, configKeyUri.indexOf("/", 7));
-    String path = configKeyUri.substring(configKeyUri.indexOf("/", 7), configKeyUri.lastIndexOf("/"));
-    String key = configKeyUri.substring(configKeyUri.lastIndexOf("/"));
-
-    String configValues = null;
-    boolean configChanged = false;
-    // Traverse the tree bottom to top searching key
-    while (configValues == null && path.length() > 1) {
-      configChanged = (getKeyValueIfModified(etcdURI + path + "/" + key) != null);
-      configValues = getKeyValue(etcdURI + path + "/" + key);
-      path = path.substring(0, path.lastIndexOf("/"));
+        keyValueStore = store;
     }
 
-    if (configValues == null) {
-      // Couldn't get the config keys from etcd
-      return null;
+    /**
+     * This method scans the KV store tree along the path of the key provided (bottom to top) searching for the
+     * configuration key passed.<br>
+     * Ex:<br>
+     * etcd://127.0.0.1:123/root/level1/level2/config<br>
+     * etcd://127.0.0.1:123/root/level1/config<br>
+     * etcd://127.0.0.1:123/root/config<br>
+     * etcd://127.0.0.1:123/config<br>
+     * <p>
+     * The configuration key is treated as a coma separated list of absolute paths in the kv store which represent the
+     * elements that should be merged to obtain the final jmxtrans configuration.
+     * <p>
+     * Ex:<br>
+     * /elements/jdk7, /elements/tomcat7, /elements/output<br>
+     * <p>
+     * Returns a coma separeted list of etcd URLs representing the keys that make up the jmxtrans desired
+     * configuration<br>
+     * If the all the keys didn't change since the last invocation returns null<br>
+     * Ex:<br>
+     * etcd://127.0.0.1:123/elements/jdk7, etcd://127.0.0.1:123/elements/tomcat7, etcd://127.0.0.1:123/elements/output
+     * <br>
+     * 
+     * @param configKeyUri the uri of the configuration key
+     * @return
+     * @throws EmbeddedJmxTransException
+     */
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(value = "ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD")
+    public List<String> getConfigElementsKeys(String configKeyUri) throws EmbeddedJmxTransException {
+
+        String etcdURI = configKeyUri.substring(0, configKeyUri.indexOf("/", 7));
+        String path = configKeyUri.substring(configKeyUri.indexOf("/", 7), configKeyUri.lastIndexOf("/"));
+        String key = configKeyUri.substring(configKeyUri.lastIndexOf("/"));
+
+        String configValues = null;
+        boolean configChanged = false;
+        // Traverse the tree bottom to top searching key
+        while (configValues == null && path.length() > 1) {
+            configChanged = (getKeyValueIfModified(etcdURI + path + "/" + key) != null);
+            configValues = getKeyValue(etcdURI + path + "/" + key);
+            path = path.substring(0, path.lastIndexOf("/"));
+        }
+
+        if (configValues == null) {
+            // Couldn't get the config keys from etcd
+            return null;
+        }
+
+        if (!path.equals(lastConfigKeyPath)) {
+            // configKeyUri found at a different level of the tree
+            configChanged = true;
+        }
+        lastConfigKeyPath = path;
+
+        StringTokenizer st = new StringTokenizer(configValues, ",");
+        List<String> configurationUrls = new ArrayList<String>();
+        while (st.hasMoreTokens()) {
+            String url = etcdURI + "/" + st.nextToken().trim();
+            configurationUrls.add(url);
+        }
+
+        // Verify if the value of the config keys has changed since last time
+        for (String keyUrl : configurationUrls) {
+            if (getKeyValueIfModified(keyUrl) != null) {
+                logger.info("KV configChanged: " + keyUrl);
+                configChanged = true;
+            }
+
+        }
+        if (configChanged) {
+            return configurationUrls;
+        }
+
+        // Config not changed
+        return null;
+
     }
 
-    if (!path.equals(lastConfigKeyPath)) {
-      // configKeyUri found at a different level of the tree
-      configChanged = true;
-    }
-    lastConfigKeyPath = path;
+    /**
+     * Retrieves a single key value from the kv store only if it has been modified since last read . Returns the value
+     * of the key or null if the key doesn't exist or is unchanged.
+     * 
+     * @param KeyURI the uri of the the key to retrieve
+     * @return the value of the key or null if the key doesn't exist or is unchanged
+     * @throws EmbeddedJmxTransException
+     */
+    protected String getKeyValueIfModified(String KeyURI) throws EmbeddedJmxTransException {
 
-    StringTokenizer st = new StringTokenizer(configValues, ",");
-    List<String> configurationUrls = new ArrayList<String>();
-    while (st.hasMoreTokens()) {
-      String url = etcdURI + "/" + st.nextToken().trim();
-      configurationUrls.add(url);
-    }
+        KeyValue keyVal = keyValueStore.getKeyValue(KeyURI);
+        if (keyVal == null) {
+            return null;
+        }
 
-    // Verify if the value of the config keys has changed since last time
-    for (String keyUrl : configurationUrls) {
-      if (getKeyValueIfModified(keyUrl) != null) {
-        System.err.println("configChanged: " + keyUrl);
-        configChanged = true;
-      }
+        String result = keyVal.getValue();
 
-    }
-    if (configChanged) {
-      return configurationUrls;
-    }
+        if (keyVal.getVersion().equals(keyModifiedIndexes.get(KeyURI))) {
+            result = null;
+        } else {
+            keyModifiedIndexes.put(KeyURI, keyVal.getVersion());
+        }
 
-    // Config not changed
-    return null;
+        return result;
 
-  }
-
-  /**
-   * Retrieves a single key value from the kv store only if it has been modified since last read .
-   * Returns the value of the key or null if the key doesn't exist or is unchanged.
-   * 
-   * @param KeyURI the uri of the the key to retrieve
-   * @return the value of the key or null if the key doesn't exist or is unchanged
-   * @throws EmbeddedJmxTransException
-   */
-  protected String getKeyValueIfModified(String KeyURI) throws EmbeddedJmxTransException {
-
-    KeyValue keyVal = keyValueStore.getKeyValue(KeyURI);
-    if (keyVal == null) {
-      return null;
     }
 
-    String result = keyVal.getValue();
+    /**
+     * Retrieves a single key value from the kv store. Returns the value of the key or null if the key doesn't exist.
+     * 
+     * @param KeyURI the uri of the key to retrieve
+     * @return the value of the key or null if the key doesn't exist or is unchanged
+     * @throws EmbeddedJmxTransException
+     */
+    protected String getKeyValue(String KeyURI) throws EmbeddedJmxTransException {
 
-    if (keyVal.getVersion().equals(keyModifiedIndexes.get(KeyURI))) {
-      result = null;
-    } else {
-      keyModifiedIndexes.put(KeyURI, keyVal.getVersion());
+        KeyValue keyVal = keyValueStore.getKeyValue(KeyURI);
+        if (keyVal != null) {
+            return keyVal.getValue();
+        }
+        return null;
     }
-
-    return result;
-
-  }
-
-  /**
-   * Retrieves a single key value from the kv store. Returns the value of the key or null if the key
-   * doesn't exist.
-   * 
-   * @param KeyURI the uri of the key to retrieve
-   * @return the value of the key or null if the key doesn't exist or is unchanged
-   * @throws EmbeddedJmxTransException
-   */
-  protected String getKeyValue(String KeyURI) throws EmbeddedJmxTransException {
-
-    KeyValue keyVal = keyValueStore.getKeyValue(KeyURI);
-    if (keyVal != null) {
-      return keyVal.getValue();
-    }
-    return null;
-  }
 }

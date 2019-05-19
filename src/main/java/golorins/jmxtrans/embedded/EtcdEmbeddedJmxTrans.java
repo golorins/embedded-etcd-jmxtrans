@@ -152,8 +152,6 @@ public class EtcdEmbeddedJmxTrans {
 
         if (configuration == null || configuration.isEmpty() || isRunning) return;
 
-        // getServletContext().log("Start embedded-jmxtrans config: " + configuration);
-
         mbeanServer = ManagementFactory.getPlatformMBeanServer();
         ConfigurationParser configurationParser = new ConfigurationParser();
 
